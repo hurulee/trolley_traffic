@@ -185,13 +185,22 @@ class TrolleyGame extends FlameGame with PanDetector {
     if (_player.isMoving) return null;
     final cs        = size.x / kCols;
     final threshold = _kBoardingRadiusCells * cs;
+    // Perpendicular tolerance: player must be within half a cell of the
+    // station's street to avoid triggering boarding when crossing it at
+    // a right angle.
+    final perpTolerance = cs * 0.5;
     for (final s in _stations) {
       if (s.isComplete) continue;
       final sx = (s.col + 0.5) * cs;
       final sy = (s.row + 0.5) * cs;
       final dx = _player.centerX - sx;
       final dy = _player.centerY - sy;
-      if (dx * dx + dy * dy < threshold * threshold) return s;
+      // Along-street distance must be within radius; perpendicular distance
+      // must be within half a cell (player is on the correct street).
+      final withinRadius = s.isVertical
+          ? dy.abs() < threshold && dx.abs() < perpTolerance
+          : dx.abs() < threshold && dy.abs() < perpTolerance;
+      if (withinRadius) return s;
     }
     return null;
   }

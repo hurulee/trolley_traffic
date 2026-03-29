@@ -93,7 +93,7 @@ class EnemyTrolley {
   }
 
   bool _isIntersection(int col, int row) =>
-      col % kStreetStep == 0 && row % kStreetStep == 0;
+      kStreetCols.contains(col) && kStreetRows.contains(row);
 
   void render(Canvas canvas) {
     final isHorizontal = direction.dx != 0;
@@ -126,10 +126,11 @@ class EnemyTrolley {
 }
 
 /// Fixed spawn points spread around the grid (all on intersections).
+/// Spawn points are all valid intersections (col ∈ kStreetCols, row ∈ kStreetRows).
 const List<(int, int)> kEnemySpawns = [
-  (20, 20), // bottom-right
-  (0,  20), // bottom-left
+  (20, 25), // bottom-right
+  (0,  25), // bottom-left
   (20,  0), // top-right
-  (10, 10), // centre
-  (10,  0), // top-centre
+  (12, 13), // centre
+  (0,  13), // left-centre
 ];

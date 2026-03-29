@@ -20,9 +20,8 @@ class Station {
 
   bool get isComplete => passengersWaiting == 0;
 
-  /// True when this station sits on a vertical street (platform extends
-  /// left/right into building cells).
-  bool get isVertical => col % kStreetStep == 0;
+  /// True when this station sits on a vertical street.
+  bool get isVertical => kStreetCols.contains(col);
 
   /// Board passengers based on elapsed time. Returns the number boarded.
   int board(double dt) {
@@ -53,35 +52,36 @@ class Station {
 
     if (isVertical) {
       // Vertical street: platforms run north-south in col-1 and col+1
-      _drawPlatformStrip(
-        canvas, cs,
-        startCol: col - 1, startRow: row - halfLen,
-        cols: 1, rows: halfLen * 2 + 1,
-        canopyEdge: _CanopyEdge.right,   // faces the street on the right
-      );
-      _drawPlatformStrip(
-        canvas, cs,
-        startCol: col + 1, startRow: row - halfLen,
-        cols: 1, rows: halfLen * 2 + 1,
-        canopyEdge: _CanopyEdge.left,    // faces the street on the left
-      );
+      for (final sideCol in [col - 1, col + 1]) {
+        final edge = sideCol < col ? _CanopyEdge.right : _CanopyEdge.left;
+        int startRow = row - halfLen;
+        if (isMazeStreet(sideCol, startRow)) {
+          startRow++; // top end touches street → shift down
+        } else if (isMazeStreet(sideCol, startRow + halfLen * 2)) {
+          startRow--; // bottom end touches street → shift up
+        }
+        _drawPlatformStrip(canvas, cs,
+          startCol: sideCol, startRow: startRow,
+          cols: 1, rows: halfLen * 2 + 1,
+          canopyEdge: edge);
+      }
     } else {
       // Horizontal street: platforms run east-west in row-1 and row+1
-      _drawPlatformStrip(
-        canvas, cs,
-        startCol: col - halfLen, startRow: row - 1,
-        cols: halfLen * 2 + 1, rows: 1,
-        canopyEdge: _CanopyEdge.bottom,  // faces the street below
-      );
-      _drawPlatformStrip(
-        canvas, cs,
-        startCol: col - halfLen, startRow: row + 1,
-        cols: halfLen * 2 + 1, rows: 1,
-        canopyEdge: _CanopyEdge.top,     // faces the street above
-      );
+      for (final sideRow in [row - 1, row + 1]) {
+        final edge = sideRow < row ? _CanopyEdge.bottom : _CanopyEdge.top;
+        int startCol = col - halfLen;
+        if (isMazeStreet(startCol, sideRow)) {
+          startCol++; // left end touches street → shift right
+        } else if (isMazeStreet(startCol + halfLen * 2, sideRow)) {
+          startCol--; // right end touches street → shift left
+        }
+        _drawPlatformStrip(canvas, cs,
+          startCol: startCol, startRow: sideRow,
+          cols: halfLen * 2 + 1, rows: 1,
+          canopyEdge: edge);
+      }
     }
 
-    _drawBadge(canvas, cs, (col + 0.5) * cs, (row + 0.5) * cs);
   }
 
   void _drawPlatformStrip(
@@ -96,6 +96,13 @@ class Station {
     final endCol = startCol + cols - 1;
     final endRow = startRow + rows - 1;
     if (startCol < 0 || startRow < 0 || endCol >= kCols || endRow >= kRows) return;
+
+    // Don't draw over any street cell.
+    for (int c = startCol; c <= endCol; c++) {
+      for (int r = startRow; r <= endRow; r++) {
+        if (isMazeStreet(c, r)) return;
+      }
+    }
 
     final inset = cs * 0.12;
     final rect  = Rect.fromLTWH(
@@ -169,19 +176,22 @@ class Station {
 /// consecutive intersections.
 List<({int col, int row})> _allCandidates() {
   final list = <({int col, int row})>[];
-  final mid  = kStreetStep ~/ 2; // = 2 for step=5
 
-  // Horizontal streets (row is intersection): station cols at seg*step + mid
-  for (int row = 0; row < kRows; row += kStreetStep) {
-    for (int seg = 0; seg < kCols ~/ kStreetStep; seg++) {
-      list.add((col: seg * kStreetStep + mid, row: row));
+  // Horizontal streets: for each street row, place a station at the midpoint
+  // of each segment between consecutive street columns.
+  for (final row in kStreetRows) {
+    for (int i = 0; i < kStreetCols.length - 1; i++) {
+      final mid = (kStreetCols[i] + kStreetCols[i + 1]) ~/ 2;
+      list.add((col: mid, row: row));
     }
   }
 
-  // Vertical streets (col is intersection): station rows at seg*step + mid
-  for (int col = 0; col < kCols; col += kStreetStep) {
-    for (int seg = 0; seg < kRows ~/ kStreetStep; seg++) {
-      list.add((col: col, row: seg * kStreetStep + mid));
+  // Vertical streets: for each street col, place a station at the midpoint
+  // of each segment between consecutive street rows.
+  for (final col in kStreetCols) {
+    for (int i = 0; i < kStreetRows.length - 1; i++) {
+      final mid = (kStreetRows[i] + kStreetRows[i + 1]) ~/ 2;
+      list.add((col: col, row: mid));
     }
   }
 
