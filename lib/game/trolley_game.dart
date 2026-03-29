@@ -13,8 +13,10 @@ const String _kOverlayDpad          = 'dpad';
 const String _kOverlayRoundComplete = 'round_complete';
 const String _kOverlayGameOver      = 'game_over';
 
-/// Collision radius: fraction of a cell. If pixel distance < this, it's a hit.
-const double _kCollisionRadius = 0.55;
+
+/// Boarding radius: how many cells away the player can be from a station and
+/// still board passengers (tune this to taste).
+const double _kBoardingRadiusCells = 1.5;
 
 class TrolleyGame extends FlameGame with PanDetector {
   late MazeComponent    _maze;
@@ -127,13 +129,28 @@ class TrolleyGame extends FlameGame with PanDetector {
 
   // ── Collision ─────────────────────────────────────────────────────────────
 
+  static const double _kTrolleyLong  = 1.7; // cells, along direction of travel
+  static const double _kTrolleyShort = 0.55; // cells, perpendicular
+
+  /// Returns the half-extents (halfW, halfH) for a trolley facing [dir].
+  static (double, double) _halfExtents(Direction dir, double cs) {
+    final halfLong  = _kTrolleyLong  * cs / 2;
+    final halfShort = _kTrolleyShort * cs / 2;
+    return dir.dx != 0
+        ? (halfLong, halfShort)   // horizontal
+        : (halfShort, halfLong);  // vertical
+  }
+
   void _checkCollisions() {
     if (_invincibleTimer > 0 || _roundComplete || _gameOver) return;
-    final threshold = (size.x / kCols) * _kCollisionRadius;
+    final cs = size.x / kCols;
+    final (pHalfW, pHalfH) = _halfExtents(_player.direction, cs);
+
     for (final e in _enemies) {
-      final dx = _player.centerX - e.centerX;
-      final dy = _player.centerY - e.centerY;
-      if (dx * dx + dy * dy < threshold * threshold) {
+      final (eHalfW, eHalfH) = _halfExtents(e.direction, cs);
+      final overlapX = (_player.centerX - e.centerX).abs() < pHalfW + eHalfW;
+      final overlapY = (_player.centerY - e.centerY).abs() < pHalfH + eHalfH;
+      if (overlapX && overlapY) {
         _onHit();
         return;
       }
@@ -166,10 +183,15 @@ class TrolleyGame extends FlameGame with PanDetector {
 
   Station? get _activeStation {
     if (_player.isMoving) return null;
+    final cs        = size.x / kCols;
+    final threshold = _kBoardingRadiusCells * cs;
     for (final s in _stations) {
-      if (!s.isComplete && s.col == _player.gridCol && s.row == _player.gridRow) {
-        return s;
-      }
+      if (s.isComplete) continue;
+      final sx = (s.col + 0.5) * cs;
+      final sy = (s.row + 0.5) * cs;
+      final dx = _player.centerX - sx;
+      final dy = _player.centerY - sy;
+      if (dx * dx + dy * dy < threshold * threshold) return s;
     }
     return null;
   }
@@ -240,6 +262,7 @@ class TrolleyGame extends FlameGame with PanDetector {
 
     canvas.save();
     canvas.translate(offsetX, offsetY);
+    canvas.clipRect(Rect.fromLTWH(0, 0, kCols * cs, kRows * cs));
 
     _maze.render(canvas);
 

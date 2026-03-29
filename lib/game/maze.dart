@@ -4,8 +4,8 @@ import 'models.dart';
 // Grid dimensions — streets fall on every kStreetStep-th column and row,
 // producing a regular city-block pattern with no dead ends.
 const int kCols       = 21;
-const int kRows       = 21;
-const int kStreetStep =  5; // street at indices 0, 5, 10, 15, 20
+const int kRows       = 26;
+const int kStreetStep =  5; // street at indices 0, 5, 10, 15, 20, 25
 
 bool isMazeStreet(int col, int row) =>
     col % kStreetStep == 0 || row % kStreetStep == 0;

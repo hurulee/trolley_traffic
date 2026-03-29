@@ -96,25 +96,29 @@ class EnemyTrolley {
       col % kStreetStep == 0 && row % kStreetStep == 0;
 
   void render(Canvas canvas) {
-    final half = cellSize * 0.38;
+    final isHorizontal = direction.dx != 0;
+    final long  = cellSize * 1.7;
+    final short = cellSize * 0.55;
+
+    final w = isHorizontal ? long  : short;
+    final h = isHorizontal ? short : long;
+
+    final cx = centerX.clamp(w / 2, kCols * cellSize - w / 2);
+    final cy = centerY.clamp(h / 2, kRows * cellSize - h / 2);
 
     // Body — yellow
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(centerX, centerY),
-          width:  half * 2,
-          height: half * 2,
-        ),
+        Rect.fromCenter(center: Offset(cx, cy), width: w, height: h),
         Radius.circular(cellSize * 0.12),
       ),
       Paint()..color = const Color(0xFFF1C40F),
     );
 
-    // Direction indicator
-    final notchOffset = Offset(direction.dx * half * 0.6, direction.dy * half * 0.6);
+    // Direction indicator at the front
+    final notchOffset = Offset(direction.dx * w * 0.38, direction.dy * h * 0.38);
     canvas.drawCircle(
-      Offset(centerX + notchOffset.dx, centerY + notchOffset.dy),
+      Offset(cx + notchOffset.dx, cy + notchOffset.dy),
       cellSize * 0.1,
       Paint()..color = const Color(0xFF2C2C2C),
     );
