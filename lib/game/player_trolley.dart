@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'maze.dart';
 import 'models.dart';
@@ -14,6 +15,7 @@ class PlayerTrolley {
   Direction direction = Direction.right;
   Direction? _queued;
   bool isMoving = true;
+  double _renderAngle = 0.0; // smoothly follows direction.angle
 
   PlayerTrolley({
     required this.gridCol,
@@ -40,7 +42,22 @@ class PlayerTrolley {
 
   void snapStop() => isMoving = false;
 
+  static double _shortestDelta(double from, double to) {
+    double d = to - from;
+    while (d >  pi) d -= 2 * pi;
+    while (d < -pi) d += 2 * pi;
+    return d;
+  }
+
   void update(double dt) {
+    // Smoothly rotate render angle toward current direction
+    final delta = _shortestDelta(_renderAngle, direction.angle);
+    if (delta.abs() <= kTurnSpeed * dt) {
+      _renderAngle = direction.angle;
+    } else {
+      _renderAngle += delta.sign * kTurnSpeed * dt;
+    }
+
     if (!isMoving) return;
     final speed  = kTrolleySpeed * cellSize;
     final nextCol = gridCol + direction.dx;
@@ -82,32 +99,36 @@ class PlayerTrolley {
   }
 
   void render(Canvas canvas) {
-    final isHorizontal = direction.dx != 0;
     final long  = cellSize * 1.7;
     final short = cellSize * 0.55;
 
-    final w = isHorizontal ? long  : short;
+    // Clamp using direction-aligned extents (game direction is always up-to-date)
+    final isHorizontal = direction.dx != 0;
+    final w = isHorizontal ? long : short;
     final h = isHorizontal ? short : long;
-
-    // Clamp rendered center so the body never extends past the maze boundary.
     final cx = centerX.clamp(w / 2, kCols * cellSize - w / 2);
     final cy = centerY.clamp(h / 2, kRows * cellSize - h / 2);
 
-    // Body
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.rotate(_renderAngle);
+
+    // Body drawn as horizontal; rotation handles orientation
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset(cx, cy), width: w, height: h),
+        Rect.fromCenter(center: Offset.zero, width: long, height: short),
         Radius.circular(cellSize * 0.12),
       ),
       Paint()..color = const Color(0xFFE74C3C),
     );
 
-    // Direction indicator at the front
-    final notchOffset = Offset(direction.dx * w * 0.38, direction.dy * h * 0.38);
+    // Front notch always at the +x side before rotation
     canvas.drawCircle(
-      Offset(cx + notchOffset.dx, cy + notchOffset.dy),
+      Offset(long * 0.38, 0),
       cellSize * 0.1,
       Paint()..color = const Color(0xFFFFFFFF),
     );
+
+    canvas.restore();
   }
 }

@@ -53,9 +53,6 @@ const List<(int, int)> kInnerStreetCells = [
   // Each strip connects the two outer streets on the long sides, splitting
   // the rectangle along its narrow dimension.
 
-  // 8×3 block (cols 3-12, rows 0-4): vertical strip at col 7
-  (7, 1),  (7, 2),  (7, 3),
-
   // 8×3 block (cols 3-12, rows 13-17): vertical strip at col 8 (offset for variety)
   (8, 14), (8, 15), (8, 16),
 
@@ -64,9 +61,6 @@ const List<(int, int)> kInnerStreetCells = [
 
   // 8×3 block (cols 3-12, rows 21-25): vertical strip at col 8
   (8, 22), (8, 23), (8, 24),
-
-  // 2×8 block (cols 0-3, rows 4-13): horizontal strip at row 8
-  (1, 8),  (2, 8),
 
   // 3×8 block (cols 12-16, rows 4-13): horizontal strip at row 9
   (13, 9), (14, 9), (15, 9),
@@ -77,10 +71,34 @@ const List<(int, int)> kInnerStreetCells = [
 
 final _innerStreetSet = Set<(int, int)>.unmodifiable(kInnerStreetCells);
 
-bool isMazeStreet(int col, int row) =>
-    _streetColSet.contains(col) ||
-    _streetRowSet.contains(row) ||
-    _innerStreetSet.contains((col, row));
+// ── Perimeter gaps ────────────────────────────────────────────────────────────
+// Cells that are on a street row/col but are blocked, forcing players to turn
+// rather than travel straight along the full perimeter.
+const List<(int, int)> kExcludedStreetCells = [
+  // Top (row 0): remove long middle segment cols 4–11
+  (4,0),(5,0),(6,0),(7,0),(8,0),(9,0),(10,0),(11,0),
+  // Bottom (row 25): remove segment cols 13–15
+  (13,25),(14,25),(15,25),
+  // Left (col 0): remove long middle segment rows 5–12
+  (0,5),(0,6),(0,7),(0,8),(0,9),(0,10),(0,11),(0,12),
+  // Right (col 20): remove segment rows 14–16
+  (20,14),(20,15),(20,16),
+];
+
+final _excludedStreetSet = Set<(int, int)>.unmodifiable(kExcludedStreetCells);
+
+bool isMazeStreet(int col, int row) {
+  if (_excludedStreetSet.contains((col, row))) return false;
+  return _streetColSet.contains(col) ||
+      _streetRowSet.contains(row) ||
+      _innerStreetSet.contains((col, row));
+}
+
+/// Like [isMazeStreet] but returns false for out-of-bounds cells.
+bool _isStreet(int col, int row) {
+  if (col < 0 || col >= kCols || row < 0 || row >= kRows) return false;
+  return isMazeStreet(col, row);
+}
 
 class MazeComponent {
   final double cellSize;
@@ -105,28 +123,121 @@ class MazeComponent {
 
   // ── Rendering ─────────────────────────────────────────────────────────────
   void render(Canvas canvas) {
+    final streetPaint = Paint()..color = _streetColor;
+    final buildPaint  = Paint()..color = _buildingColor;
+    final edgePaint   = Paint()
+      ..color       = _buildingEdge
+      ..style       = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    // 1. Background
     canvas.drawRect(
       Rect.fromLTWH(0, 0, kCols * cellSize, kRows * cellSize),
       Paint()..color = _bgColor,
     );
 
+    // 2. Streets
     for (int row = 0; row < kRows; row++) {
       for (int col = 0; col < kCols; col++) {
-        final rect = Rect.fromLTWH(
-          col * cellSize, row * cellSize, cellSize, cellSize,
-        );
         if (isMazeStreet(col, row)) {
-          canvas.drawRect(rect, Paint()..color = _streetColor);
-        } else {
-          canvas.drawRect(rect, Paint()..color = _buildingColor);
           canvas.drawRect(
-            rect.deflate(1.5),
-            Paint()
-              ..color       = _buildingEdge
-              ..style       = PaintingStyle.stroke
-              ..strokeWidth = 1.0,
+            Rect.fromLTWH(col * cellSize, row * cellSize, cellSize, cellSize),
+            streetPaint,
           );
         }
+      }
+    }
+
+    // 3. Draw block fills
+    for (int i = 0; i < kStreetCols.length - 1; i++) {
+      for (int j = 0; j < kStreetRows.length - 1; j++) {
+        final c1 = kStreetCols[i] + 1;
+        final c2 = kStreetCols[i + 1] - 1;
+        final r1 = kStreetRows[j] + 1;
+        final r2 = kStreetRows[j + 1] - 1;
+        if (c1 > c2 || r1 > r2) continue;
+        canvas.drawRect(
+          Rect.fromLTRB(c1 * cellSize, r1 * cellSize,
+                        (c2 + 1) * cellSize, (r2 + 1) * cellSize),
+          buildPaint,
+        );
+      }
+    }
+
+    // 4. Inner streets on top of block fills
+    for (final (col, row) in kInnerStreetCells) {
+      canvas.drawRect(
+        Rect.fromLTWH(col * cellSize, row * cellSize, cellSize, cellSize),
+        streetPaint,
+      );
+    }
+
+    // 5. Per-cell rounded corners — round any building-cell corner where
+    //    both orthogonal neighbours are streets.
+    final cr = cellSize * 0.45;
+    for (int row = 0; row < kRows; row++) {
+      for (int col = 0; col < kCols; col++) {
+        if (isMazeStreet(col, row)) continue;
+        final x = col * cellSize;
+        final y = row * cellSize;
+        final cs = cellSize; // alias for readability
+
+        // Top-left
+        if (_isStreet(col - 1, row) && _isStreet(col, row - 1)) {
+          canvas.drawRect(Rect.fromLTWH(x, y, cr, cr), streetPaint);
+          canvas.drawCircle(Offset(x + cr, y + cr), cr, buildPaint);
+        }
+        // Top-right
+        if (_isStreet(col + 1, row) && _isStreet(col, row - 1)) {
+          canvas.drawRect(Rect.fromLTWH(x + cs - cr, y, cr, cr), streetPaint);
+          canvas.drawCircle(Offset(x + cs - cr, y + cr), cr, buildPaint);
+        }
+        // Bottom-left
+        if (_isStreet(col - 1, row) && _isStreet(col, row + 1)) {
+          canvas.drawRect(Rect.fromLTWH(x, y + cs - cr, cr, cr), streetPaint);
+          canvas.drawCircle(Offset(x + cr, y + cs - cr), cr, buildPaint);
+        }
+        // Bottom-right
+        if (_isStreet(col + 1, row) && _isStreet(col, row + 1)) {
+          canvas.drawRect(Rect.fromLTWH(x + cs - cr, y + cs - cr, cr, cr), streetPaint);
+          canvas.drawCircle(Offset(x + cs - cr, y + cs - cr), cr, buildPaint);
+        }
+      }
+    }
+
+    // 6. Border strokes for outer-grid blocks
+    for (int i = 0; i < kStreetCols.length - 1; i++) {
+      for (int j = 0; j < kStreetRows.length - 1; j++) {
+        final c1 = kStreetCols[i] + 1;
+        final c2 = kStreetCols[i + 1] - 1;
+        final r1 = kStreetRows[j] + 1;
+        final r2 = kStreetRows[j + 1] - 1;
+        if (c1 > c2 || r1 > r2) continue;
+
+        final l = c1 * cellSize;
+        final t = r1 * cellSize;
+        final r = (c2 + 1) * cellSize;
+        final b = (r2 + 1) * cellSize;
+        final blockRect = Rect.fromLTRB(l, t, r, b);
+
+        final maxR = ((r - l) < (b - t) ? (r - l) : (b - t)) / 2;
+        final bCr = cr < maxR ? cr : maxR;
+
+        final sc1 = kStreetCols[i];
+        final sc2 = kStreetCols[i + 1];
+        final sr1 = kStreetRows[j];
+        final sr2 = kStreetRows[j + 1];
+
+        canvas.drawRRect(
+          RRect.fromRectAndCorners(
+            blockRect.deflate(1.5),
+            topLeft:     Radius.circular(_isStreet(sc1, sr1) ? bCr : 0),
+            topRight:    Radius.circular(_isStreet(sc2, sr1) ? bCr : 0),
+            bottomLeft:  Radius.circular(_isStreet(sc1, sr2) ? bCr : 0),
+            bottomRight: Radius.circular(_isStreet(sc2, sr2) ? bCr : 0),
+          ),
+          edgePaint,
+        );
       }
     }
 
